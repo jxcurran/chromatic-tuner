@@ -57,10 +57,14 @@ function closestNote(freq: number): { note: string; freq: number } {
   return { note: `${name}${octave}`, freq: targetFreq };
 }
 
+const AudioContextCtor: typeof AudioContext =
+  window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+
 export function useGuitarTuner() {
   const [isListening, setIsListening] = useState(false);
   const [targetNote, setTargetNote] = useState('--');
   const [cents, setCents] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -69,7 +73,7 @@ export function useGuitarTuner() {
 
   const stop = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
-    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
     audioContextRef.current?.close();
     audioContextRef.current = null;
     analyserRef.current = null;
@@ -80,11 +84,19 @@ export function useGuitarTuner() {
   }, []);
 
   const start = useCallback(async () => {
+    setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Microphone not supported. Use HTTPS or a modern browser.');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       streamRef.current = stream;
 
-      const audioContext = new AudioContext();
+      const audioContext = new AudioContextCtor();
+      // iOS Safari creates AudioContext in suspended state — must resume after user gesture
+      if (audioContext.state === 'suspended') await audioContext.resume();
       audioContextRef.current = audioContext;
 
       const analyser = audioContext.createAnalyser();
@@ -112,12 +124,17 @@ export function useGuitarTuner() {
 
       rafRef.current = requestAnimationFrame(loop);
       setIsListening(true);
-    } catch {
-      console.error('Microphone access denied or unavailable');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes('denied') || msg.toLowerCase().includes('permission')) {
+        setError('Microphone access denied. Allow mic access in your browser settings.');
+      } else {
+        setError('Could not access microphone. ' + msg);
+      }
     }
   }, []);
 
   useEffect(() => () => stop(), [stop]);
 
-  return { isListening, targetNote, cents, start, stop };
+  return { isListening, targetNote, cents, error, start, stop };
 }

@@ -2,17 +2,21 @@ import { useGuitarTuner } from './hooks/useGuitarTuner';
 import { TunerDial } from './components/TunerDial';
 
 function App() {
-  const { isListening, targetNote, cents, start, stop } = useGuitarTuner();
+  const { isListening, targetNote, cents, error, start, stop } = useGuitarTuner();
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-10 px-4">
       <p className="text-3xl font-semibold tracking-widest text-gray-400 uppercase m-0">
-        Vibe Tuner
+        Chromatic Tuner
       </p>
 
       <div className="bg-gray-900 rounded-3xl p-10 shadow-2xl border border-gray-800">
         <TunerDial targetNote={targetNote} cents={cents} />
       </div>
+
+      {error && (
+        <p className="text-red-400 text-sm text-center max-w-xs">{error}</p>
+      )}
 
       <button
         onClick={isListening ? stop : start}
