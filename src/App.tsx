@@ -15,7 +15,9 @@ function App() {
       </div>
 
       {error && (
-        <p className="text-red-400 text-sm text-center max-w-xs">{error}</p>
+        <div className="bg-red-950 border border-red-700 rounded-xl px-5 py-3 max-w-xs text-center">
+          <p className="text-red-300 text-sm leading-relaxed m-0">{error}</p>
+        </div>
       )}
 
       <button

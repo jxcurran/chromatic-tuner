@@ -57,9 +57,6 @@ function closestNote(freq: number): { note: string; freq: number } {
   return { note: `${name}${octave}`, freq: targetFreq };
 }
 
-const AudioContextCtor: typeof AudioContext =
-  window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-
 export function useGuitarTuner() {
   const [isListening, setIsListening] = useState(false);
   const [targetNote, setTargetNote] = useState('--');
@@ -87,15 +84,23 @@ export function useGuitarTuner() {
     setError(null);
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setError('Microphone not supported. Use HTTPS or a modern browser.');
+        setError('Microphone requires HTTPS. Open the deployed site or enable mic for this origin in browser settings.');
         return;
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       streamRef.current = stream;
 
+      const w = window as unknown as { webkitAudioContext?: typeof AudioContext };
+      const AudioContextCtor = window.AudioContext ?? w.webkitAudioContext;
+      if (!AudioContextCtor) {
+        stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+        setError('Web Audio API not supported on this browser.');
+        return;
+      }
+
       const audioContext = new AudioContextCtor();
-      // iOS Safari creates AudioContext in suspended state — must resume after user gesture
+      // iOS Safari starts AudioContext suspended even inside a user gesture
       if (audioContext.state === 'suspended') await audioContext.resume();
       audioContextRef.current = audioContext;
 
@@ -125,11 +130,15 @@ export function useGuitarTuner() {
       rafRef.current = requestAnimationFrame(loop);
       setIsListening(true);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.toLowerCase().includes('denied') || msg.toLowerCase().includes('permission')) {
-        setError('Microphone access denied. Allow mic access in your browser settings.');
+      const name = err instanceof DOMException ? err.name : '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setError('Microphone access denied. Tap the lock icon in your browser address bar and allow the microphone.');
+      } else if (name === 'NotFoundError') {
+        setError('No microphone found on this device.');
+      } else if (name === 'SecurityError') {
+        setError('Microphone blocked — page must be served over HTTPS.');
       } else {
-        setError('Could not access microphone. ' + msg);
+        setError('Could not access microphone: ' + (err instanceof Error ? err.message : String(err)));
       }
     }
   }, []);
